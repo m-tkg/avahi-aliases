@@ -2,7 +2,6 @@
 import time, locale, os, sys
 import subprocess
 
-import avahi, dbus
 from encodings.idna import ToASCII
 import daemon
 from daemon import runner
@@ -10,6 +9,100 @@ from daemon import runner
 
 import logging, logging.handlers
 
+
+import dbus
+
+SERVER_INVALID, SERVER_REGISTERING, SERVER_RUNNING, SERVER_COLLISION, SERVER_FAILURE = range(0, 5)
+
+ENTRY_GROUP_UNCOMMITED, ENTRY_GROUP_REGISTERING, ENTRY_GROUP_ESTABLISHED, ENTRY_GROUP_COLLISION, ENTRY_GROUP_FAILURE = range(0, 5)
+
+DOMAIN_BROWSER_BROWSE, DOMAIN_BROWSER_BROWSE_DEFAULT, DOMAIN_BROWSER_REGISTER, DOMAIN_BROWSER_REGISTER_DEFAULT, DOMAIN_BROWSER_BROWSE_LEGACY = range(0, 5)
+
+PROTO_UNSPEC, PROTO_INET, PROTO_INET6  = -1, 0, 1
+
+IF_UNSPEC = -1
+
+PUBLISH_UNIQUE = 1
+PUBLISH_NO_PROBE = 2
+PUBLISH_NO_ANNOUNCE = 4
+PUBLISH_ALLOW_MULTIPLE = 8
+PUBLISH_NO_REVERSE = 16
+PUBLISH_NO_COOKIE = 32
+PUBLISH_UPDATE = 64
+PUBLISH_USE_WIDE_AREA = 128
+PUBLISH_USE_MULTICAST = 256
+
+LOOKUP_USE_WIDE_AREA = 1
+LOOKUP_USE_MULTICAST = 2
+LOOKUP_NO_TXT = 4
+LOOKUP_NO_ADDRESS = 8
+
+LOOKUP_RESULT_CACHED = 1
+LOOKUP_RESULT_WIDE_AREA = 2
+LOOKUP_RESULT_MULTICAST = 4
+LOOKUP_RESULT_LOCAL = 8
+LOOKUP_RESULT_OUR_OWN = 16
+LOOKUP_RESULT_STATIC = 32
+
+SERVICE_COOKIE = "org.freedesktop.Avahi.cookie"
+SERVICE_COOKIE_INVALID = 0
+
+DBUS_NAME = "org.freedesktop.Avahi"
+DBUS_INTERFACE_SERVER = DBUS_NAME + ".Server"
+DBUS_PATH_SERVER = "/"
+DBUS_INTERFACE_ENTRY_GROUP = DBUS_NAME + ".EntryGroup"
+DBUS_INTERFACE_DOMAIN_BROWSER = DBUS_NAME + ".DomainBrowser"
+DBUS_INTERFACE_SERVICE_TYPE_BROWSER = DBUS_NAME + ".ServiceTypeBrowser"
+DBUS_INTERFACE_SERVICE_BROWSER = DBUS_NAME + ".ServiceBrowser"
+DBUS_INTERFACE_ADDRESS_RESOLVER = DBUS_NAME + ".AddressResolver"
+DBUS_INTERFACE_HOST_NAME_RESOLVER = DBUS_NAME + ".HostNameResolver"
+DBUS_INTERFACE_SERVICE_RESOLVER = DBUS_NAME + ".ServiceResolver"
+DBUS_INTERFACE_RECORD_BROWSER = DBUS_NAME + ".RecordBrowser"
+
+def byte_array_to_string(s):
+    r = ""
+
+    for c in s:
+
+        if c >= 32 and c < 127:
+            r += "%c" % c
+        else:
+            r += "."
+
+    return r
+
+def txt_array_to_string_array(t):
+    l = []
+
+    for s in t:
+        l.append(byte_array_to_string(s))
+
+    return l
+
+
+def string_to_byte_array(s):
+    r = []
+
+    for c in s:
+        r.append(dbus.Byte(ord(c)))
+
+    return r
+
+def string_array_to_txt_array(t):
+    l = []
+
+    for s in t:
+        l.append(string_to_byte_array(s))
+
+    return l
+
+def dict_to_txt_array(txt_dict):
+    l = []
+
+    for k,v in txt_dict.items():
+        l.append(string_to_byte_array("%s=%s" % (k,v)))
+
+    return l
 
 
 class Settings:
@@ -65,16 +158,16 @@ class AvahiAliases:
             copied from https://gist.github.com/gdamjan/3168336
         """
         bus = dbus.SystemBus()
-        server = dbus.Interface(bus.get_object(avahi.DBUS_NAME, avahi.DBUS_PATH_SERVER),
-                avahi.DBUS_INTERFACE_SERVER)
-        group = dbus.Interface(bus.get_object(avahi.DBUS_NAME, server.EntryGroupNew()),
-                avahi.DBUS_INTERFACE_ENTRY_GROUP)
+        server = dbus.Interface(bus.get_object(DBUS_NAME, DBUS_PATH_SERVER),
+                DBUS_INTERFACE_SERVER)
+        group = dbus.Interface(bus.get_object(DBUS_NAME, server.EntryGroupNew()),
+                DBUS_INTERFACE_ENTRY_GROUP)
 
         cname = self.encode(cname)
         rdata = self.encode_rdata(server.GetHostNameFqdn())
-        rdata = avahi.string_to_byte_array(rdata)
+        rdata = string_to_byte_array(rdata)
 
-        group.AddRecord(avahi.IF_UNSPEC, avahi.PROTO_UNSPEC, dbus.UInt32(0),
+        group.AddRecord(IF_UNSPEC, PROTO_UNSPEC, dbus.UInt32(0),
             cname, Settings.CLASS_IN, Settings.TYPE_CNAME, Settings.TTL, rdata)
         group.Commit()
 
